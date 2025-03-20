@@ -36,6 +36,15 @@ enum Commands {
         #[arg(short, long, default_value = "default-quantum-key")]
         key: String,
     },
+    /// decrypt a payload using true quantum encryption
+    Decrypt {
+        /// input file containing encrypted data
+        input: String,
+
+        /// encryption key
+        #[arg(short, long, default_value = "default-quantum-key")]
+        key: String,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -88,6 +97,19 @@ fn main() -> io::Result<()> {
             
             println!("\x1b[1;36m[i] encryption complete with quantum security\x1b[0m");
         }
+        Commands::Decrypt { input, key } => {
+            println!("\x1b[1;33m[*] initializing quantum decryption...\x1b[0m");
+
+            let encrypted_data: EncryptedData = {
+                let data = fs::read_to_string(input)?;
+                serde_json::from_str(&data).expect("Failed to parse JSON")
+            };
+
+            let decrypted = quantum_decrypt(&encrypted_data, key);
+            println!("\n\x1b[1;32m[✓] decrypted output:\x1b[0m");
+            println!("{}", decrypted);
+            println!("\x1b[1;36m[i] decryption complete\x1b[0m");
+        }
     }
     
     Ok(())
@@ -119,4 +141,25 @@ fn quantum_encrypt(data: &str, key: &str) -> EncryptedData {
         content: general_purpose::STANDARD.encode(encrypted),
         nonce: general_purpose::STANDARD.encode(nonce_bytes),
     }
+}
+
+/// Decrypt the encrypted data
+fn quantum_decrypt(encrypted_data: &EncryptedData, key: &str) -> String {
+    let mut hasher = sha2::Sha256::new();
+    use sha2::Digest;
+    hasher.update(key.as_bytes());
+    let key_bytes = hasher.finalize();
+
+    // Decode the base64-encoded content and nonce
+    let encrypted_content = general_purpose::STANDARD.decode(&encrypted_data.content)
+        .expect("Failed to decode content");
+    let nonce_bytes = general_purpose::STANDARD.decode(&encrypted_data.nonce)
+        .expect("Failed to decode nonce");
+
+    // Decrypt the content
+    let cipher = Aes256Gcm::new(&key_bytes.into());
+    let decrypted = cipher.decrypt(Nonce::from_slice(&nonce_bytes), encrypted_content.as_ref())
+        .expect("decryption failed");
+
+    String::from_utf8(decrypted).expect("Failed to convert decrypted bytes to string")
 }
